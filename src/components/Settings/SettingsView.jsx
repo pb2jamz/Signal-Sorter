@@ -55,15 +55,18 @@ const SettingsView = () => {
   }
 
   const handleUpdateProfile = async () => {
+    setMessage({ type: '', text: '' })
     try {
       setLoading(true)
+      console.log('Saving profile:', profileForm)
       await updateProfile(profileForm)
+      console.log('Profile saved successfully')
       setEditingProfile(false)
       setActiveSection(null)
       setMessage({ type: 'success', text: 'Profile updated!' })
     } catch (err) {
       console.error('Profile update error:', err)
-      setMessage({ type: 'error', text: err.message || 'Failed to update profile' })
+      setMessage({ type: 'error', text: `Error: ${err.message || JSON.stringify(err)}` })
     } finally {
       setLoading(false)
     }
