@@ -90,8 +90,11 @@ export const AuthProvider = ({ children }) => {
     if (!user) throw new Error('No user')
     const { data, error } = await supabase
       .from('users')
-      .update(updates)
-      .eq('id', user.id)
+      .upsert({
+        id: user.id,
+        email: user.email,
+        ...updates
+      })
       .select()
       .single()
     if (error) throw error
