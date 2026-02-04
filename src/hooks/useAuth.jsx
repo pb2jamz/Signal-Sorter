@@ -88,12 +88,13 @@ export const AuthProvider = ({ children }) => {
 
   const updateProfile = async (updates) => {
     if (!user) throw new Error('No user')
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('users')
       .update(updates)
       .eq('id', user.id)
       .select()
       .single()
+    if (error) throw error
     if (data) setProfile(data)
     return data
   }

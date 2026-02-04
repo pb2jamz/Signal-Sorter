@@ -48,26 +48,28 @@ const MainApp = () => {
 
   // Main app layout
   return (
-    <div className="min-h-screen bg-slate-900 text-white flex flex-col">
-      <Header syncing={syncing} />
-      
-      <main className="flex-1 overflow-hidden pb-16">
-        {activeView === 'chat' && <ChatView />}
-        {activeView === 'list' && <ListView onScheduleItem={handleScheduleItem} />}
-        {activeView === 'calendar' && (
-          <CalendarView 
-            itemToSchedule={itemToSchedule} 
-            onClearScheduleItem={() => setItemToSchedule(null)} 
-          />
-        )}
-        {activeView === 'settings' && <SettingsView />}
-      </main>
+    <div className="min-h-screen bg-slate-900 text-white flex justify-center">
+      <div className="w-full max-w-lg flex flex-col min-h-screen">
+        <Header syncing={syncing} />
+        
+        <main className="flex-1 overflow-hidden pb-16">
+          {activeView === 'chat' && <ChatView />}
+          {activeView === 'list' && <ListView onScheduleItem={handleScheduleItem} />}
+          {activeView === 'calendar' && (
+            <CalendarView 
+              itemToSchedule={itemToSchedule} 
+              onClearScheduleItem={() => setItemToSchedule(null)} 
+            />
+          )}
+          {activeView === 'settings' && <SettingsView />}
+        </main>
 
-      <BottomNav 
-        activeView={activeView} 
-        onViewChange={setActiveView}
-        signalCount={signals.length}
-      />
+        <BottomNav 
+          activeView={activeView} 
+          onViewChange={setActiveView}
+          signalCount={signals.length}
+        />
+      </div>
     </div>
   )
 }

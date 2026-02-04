@@ -59,9 +59,11 @@ const SettingsView = () => {
       setLoading(true)
       await updateProfile(profileForm)
       setEditingProfile(false)
+      setActiveSection(null)
       setMessage({ type: 'success', text: 'Profile updated!' })
     } catch (err) {
-      setMessage({ type: 'error', text: 'Failed to update profile' })
+      console.error('Profile update error:', err)
+      setMessage({ type: 'error', text: err.message || 'Failed to update profile' })
     } finally {
       setLoading(false)
     }
