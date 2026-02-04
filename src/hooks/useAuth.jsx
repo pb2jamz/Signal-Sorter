@@ -8,202 +8,111 @@ export const AuthProvider = ({ children }) => {
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
   const [needsOnboarding, setNeedsOnboarding] = useState(false)
-  const [authError, setAuthError] = useState(null)
 
   useEffect(() => {
-    let isMounted = true
-    
-    // Timeout failsafe - don't hang forever
-    const timeout = setTimeout(() => {
-      if (isMounted && loading) {
-        console.warn('Auth initialization timed out')
-        setLoading(false)
-      }
-    }, 5000) // 5 second max wait
+    // Force loading to false after 3 seconds no matter what
+    const forceTimeout = setTimeout(() => setLoading(false), 3000)
 
     const initAuth = async () => {
       try {
-        console.log('Initializing auth...')
-        
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-        
-        if (sessionError) {
-          console.error('Session error:', sessionError)
-          setAuthError(sessionError.message)
-          if (isMounted) setLoading(false)
-          return
-        }
-        
-        console.log('Session:', session ? 'exists' : 'none')
+        const { data: { session } } = await supabase.auth.getSession()
         
         if (session?.user) {
-          if (isMounted) setUser(session.user)
+          setUser(session.user)
           
-          try {
-            const completed = await hasCompletedOnboarding(session.user.id)
-            console.log('Onboarding completed:', completed)
-            
-            if (isMounted) setNeedsOnboarding(!completed)
-            
-            if (completed) {
-              const userProfile = await getUserProfile(session.user.id)
-              console.log('Profile loaded:', userProfile?.name)
-              if (isMounted) setProfile(userProfile)
-            }
-          } catch (profileError) {
-            console.error('Profile error:', profileError)
-            if (isMounted) setNeedsOnboarding(true)
+          const completed = await hasCompletedOnboarding(session.user.id)
+          setNeedsOnboarding(!completed)
+          
+          if (completed) {
+            const userProfile = await getUserProfile(session.user.id)
+            if (userProfile) setProfile(userProfile)
           }
         }
-        
-        if (isMounted) setLoading(false)
-        
       } catch (error) {
-        console.error('Auth init error:', error)
-        setAuthError(error.message)
-        if (isMounted) setLoading(false)
+        console.error('Auth error:', error)
       }
+      setLoading(false)
     }
 
     initAuth()
 
-    // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('Auth state changed:', event)
-      
       if (event === 'SIGNED_IN' && session?.user) {
-        if (isMounted) {
-          setUser(session.user)
-          setAuthError(null)
+        setUser(session.user)
+        const completed = await hasCompletedOnboarding(session.user.id)
+        setNeedsOnboarding(!completed)
+        if (completed) {
+          const userProfile = await getUserProfile(session.user.id)
+          if (userProfile) setProfile(userProfile)
         }
-        
-        try {
-          const completed = await hasCompletedOnboarding(session.user.id)
-          if (isMounted) setNeedsOnboarding(!completed)
-          
-          if (completed) {
-            const userProfile = await getUserProfile(session.user.id)
-            if (isMounted) setProfile(userProfile)
-          }
-        } catch (err) {
-          console.error('Profile load error:', err)
-          if (isMounted) setNeedsOnboarding(true)
-        }
-        
-        if (isMounted) setLoading(false)
-        
       } else if (event === 'SIGNED_OUT') {
-        if (isMounted) {
-          setUser(null)
-          setProfile(null)
-          setNeedsOnboarding(false)
-          setLoading(false)
-        }
+        setUser(null)
+        setProfile(null)
+        setNeedsOnboarding(false)
       }
     })
 
     return () => {
-      isMounted = false
-      clearTimeout(timeout)
+      clearTimeout(forceTimeout)
       subscription.unsubscribe()
     }
   }, [])
 
   const signUp = async (email, password) => {
-    setAuthError(null)
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password
-    })
-    if (error) {
-      setAuthError(error.message)
-      throw error
-    }
+    const { data, error } = await supabase.auth.signUp({ email, password })
+    if (error) throw error
     return data
   }
 
   const signIn = async (email, password) => {
-    setAuthError(null)
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password
-    })
-    if (error) {
-      setAuthError(error.message)
-      throw error
-    }
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+    if (error) throw error
     return data
   }
 
   const signOut = async () => {
-    const { error } = await supabase.auth.signOut()
-    if (error) {
-      setAuthError(error.message)
-      throw error
-    }
+    await supabase.auth.signOut()
   }
 
   const completeOnboarding = async (profileData) => {
-    if (!user) throw new Error('No user logged in')
-
-    const { error } = await supabase
-      .from('users')
-      .upsert({
-        id: user.id,
-        email: user.email,
-        ...profileData,
-        onboarding_completed: true,
-        updated_at: new Date().toISOString()
-      })
-
-    if (error) throw error
-
+    if (!user) throw new Error('No user')
+    await supabase.from('users').upsert({
+      id: user.id,
+      email: user.email,
+      ...profileData,
+      onboarding_completed: true
+    })
     setProfile({ id: user.id, email: user.email, ...profileData })
     setNeedsOnboarding(false)
   }
 
   const updateProfile = async (updates) => {
-    if (!user) throw new Error('No user logged in')
-
-    const { data, error } = await supabase
+    if (!user) throw new Error('No user')
+    const { data } = await supabase
       .from('users')
-      .update({
-        ...updates,
-        updated_at: new Date().toISOString()
-      })
+      .update(updates)
       .eq('id', user.id)
       .select()
       .single()
-
-    if (error) throw error
-    setProfile(data)
+    if (data) setProfile(data)
     return data
   }
 
-  const value = {
-    user,
-    profile,
-    loading,
-    needsOnboarding,
-    authError,
-    signUp,
-    signIn,
-    signOut,
-    completeOnboarding,
-    updateProfile
-  }
-
   return (
-    <AuthContext.Provider value={value}>
+    <AuthContext.Provider value={{
+      user,
+      profile,
+      loading,
+      needsOnboarding,
+      signUp,
+      signIn,
+      signOut,
+      completeOnboarding,
+      updateProfile
+    }}>
       {children}
     </AuthContext.Provider>
   )
 }
 
-export const useAuth = () => {
-  const context = useContext(AuthContext)
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider')
-  }
-  return context
-}
+export const useAuth = () => useContext(AuthContext)
