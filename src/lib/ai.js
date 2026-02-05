@@ -7,6 +7,7 @@ export const analyzeWithAI = async (userMessage, userContext, existingItems = []
   const systemPrompt = buildSystemPrompt(userContext, activeItems, completedItems, isReprioritize)
 
   try {
+    console.log('[AI] Sending request...')
     const response = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -22,12 +23,17 @@ export const analyzeWithAI = async (userMessage, userContext, existingItems = []
     }
 
     const data = await response.json()
+    console.log('[AI] Response received')
+    
+    const extractedItems = extractItems(data.response, existingItems)
+    console.log('[AI] Extracted items:', extractedItems.map(i => `${i.name} (${i.classification})`))
+    
     return {
       response: data.response,
-      items: extractItems(data.response, existingItems)
+      items: extractedItems
     }
   } catch (error) {
-    console.error('AI Error:', error)
+    console.error('[AI] Error:', error)
     throw error
   }
 }
@@ -66,7 +72,7 @@ ${activeItems.map(i => `- ${i.name} (${i.classification})`).join('\n') || 'None'
 Recently completed:
 ${completedItems.slice(0, 5).map(i => `- ${i.name}`).join('\n') || 'None'}
 
-Re-evaluate and tell them what should be #1 priority NOW.
+Re-evaluate and tell them what should be #1 priority NOW. Do NOT add new items - just tell them which existing item to focus on.
 ` : `
 Current tracked items:
 ${activeItems.map(i => `- ${i.name} (${i.classification})`).join('\n') || 'None yet'}`}
@@ -77,72 +83,93 @@ Respond casually like a coworker, not a formal assistant.`
 const extractItems = (aiResponse, existingItems) => {
   const extractedItems = []
   const lines = aiResponse.split('\n')
+  
+  const existingNames = existingItems.map(i => i.name.toLowerCase())
 
   lines.forEach(line => {
-    // Match: 🟢 SIGNAL: Task name | WHAT: x | WHY: y | NEXT: z
-    const signalMatch = line.match(/🟢\s*(?:SIGNAL)?[:\s]*([^|]+)\|?\s*WHAT:\s*([^|]+)\|?\s*WHY:\s*([^|]+)\|?\s*NEXT:\s*(.+)/i)
-    if (signalMatch) {
-      const name = cleanName(signalMatch[1])
-      if (isValidItem(name, existingItems)) {
+    // Try full format first: 🟢 SIGNAL: Task name | WHAT: x | WHY: y | NEXT: z
+    
+    // SIGNAL - full format
+    let match = line.match(/🟢\s*SIGNAL[:\s]+([^|]+)\|\s*WHAT:\s*([^|]+)\|\s*WHY:\s*([^|]+)\|\s*NEXT:\s*(.+)/i)
+    if (match) {
+      const name = cleanName(match[1])
+      if (isValidItem(name, existingNames)) {
         extractedItems.push({
           name,
           classification: 'SIGNAL',
-          what: signalMatch[2]?.trim() || '',
-          why: signalMatch[3]?.trim() || '',
-          next_action: signalMatch[4]?.trim() || ''
+          what: match[2]?.trim() || '',
+          why: match[3]?.trim() || '',
+          next_action: match[4]?.trim() || ''
         })
+        console.log('[AI] Extracted SIGNAL:', name)
+        return
       }
-    } else {
-      const simpleSignal = line.match(/🟢\s*(?:SIGNAL)?[:\s]*([^-–—|\n]{5,60})(?:\s*[-–—|]|$)/i)
-      if (simpleSignal?.[1]) {
-        const name = cleanName(simpleSignal[1])
-        if (isValidItem(name, existingItems)) {
-          extractedItems.push({ name, classification: 'SIGNAL', what: '', why: '', next_action: '' })
-        }
+    }
+    
+    // SIGNAL - simple format
+    match = line.match(/🟢\s*SIGNAL[:\s]+([^|\n]+)/i)
+    if (match) {
+      const name = cleanName(match[1])
+      if (isValidItem(name, existingNames)) {
+        extractedItems.push({ name, classification: 'SIGNAL', what: '', why: '', next_action: '' })
+        console.log('[AI] Extracted SIGNAL (simple):', name)
+        return
       }
     }
 
-    const necessaryMatch = line.match(/🟡\s*(?:NECESSARY)?[:\s]*([^|]+)\|?\s*WHAT:\s*([^|]+)\|?\s*WHY:\s*([^|]+)\|?\s*NEXT:\s*(.+)/i)
-    if (necessaryMatch) {
-      const name = cleanName(necessaryMatch[1])
-      if (isValidItem(name, existingItems)) {
+    // NECESSARY - full format
+    match = line.match(/🟡\s*NECESSARY[:\s]+([^|]+)\|\s*WHAT:\s*([^|]+)\|\s*WHY:\s*([^|]+)\|\s*NEXT:\s*(.+)/i)
+    if (match) {
+      const name = cleanName(match[1])
+      if (isValidItem(name, existingNames)) {
         extractedItems.push({
           name,
           classification: 'NECESSARY',
-          what: necessaryMatch[2]?.trim() || '',
-          why: necessaryMatch[3]?.trim() || '',
-          next_action: necessaryMatch[4]?.trim() || ''
+          what: match[2]?.trim() || '',
+          why: match[3]?.trim() || '',
+          next_action: match[4]?.trim() || ''
         })
+        console.log('[AI] Extracted NECESSARY:', name)
+        return
       }
-    } else {
-      const simpleNecessary = line.match(/🟡\s*(?:NECESSARY)?[:\s]*([^-–—|\n]{5,60})(?:\s*[-–—|]|$)/i)
-      if (simpleNecessary?.[1]) {
-        const name = cleanName(simpleNecessary[1])
-        if (isValidItem(name, existingItems)) {
-          extractedItems.push({ name, classification: 'NECESSARY', what: '', why: '', next_action: '' })
-        }
+    }
+    
+    // NECESSARY - simple format
+    match = line.match(/🟡\s*NECESSARY[:\s]+([^|\n]+)/i)
+    if (match) {
+      const name = cleanName(match[1])
+      if (isValidItem(name, existingNames)) {
+        extractedItems.push({ name, classification: 'NECESSARY', what: '', why: '', next_action: '' })
+        console.log('[AI] Extracted NECESSARY (simple):', name)
+        return
       }
     }
 
-    const noiseMatch = line.match(/🔴\s*(?:NOISE)?[:\s]*([^|]+)\|?\s*WHAT:\s*([^|]+)\|?\s*WHY:\s*([^|]+)\|?\s*NEXT:\s*(.+)/i)
-    if (noiseMatch) {
-      const name = cleanName(noiseMatch[1])
-      if (isValidItem(name, existingItems)) {
+    // NOISE - full format
+    match = line.match(/🔴\s*NOISE[:\s]+([^|]+)\|\s*WHAT:\s*([^|]+)\|\s*WHY:\s*([^|]+)\|\s*NEXT:\s*(.+)/i)
+    if (match) {
+      const name = cleanName(match[1])
+      if (isValidItem(name, existingNames)) {
         extractedItems.push({
           name,
           classification: 'NOISE',
-          what: noiseMatch[2]?.trim() || '',
-          why: noiseMatch[3]?.trim() || '',
-          next_action: noiseMatch[4]?.trim() || ''
+          what: match[2]?.trim() || '',
+          why: match[3]?.trim() || '',
+          next_action: match[4]?.trim() || ''
         })
+        console.log('[AI] Extracted NOISE:', name)
+        return
       }
-    } else {
-      const simpleNoise = line.match(/🔴\s*(?:NOISE)?[:\s]*([^-–—|\n]{5,60})(?:\s*[-–—|]|$)/i)
-      if (simpleNoise?.[1]) {
-        const name = cleanName(simpleNoise[1])
-        if (isValidItem(name, existingItems)) {
-          extractedItems.push({ name, classification: 'NOISE', what: '', why: '', next_action: '' })
-        }
+    }
+    
+    // NOISE - simple format
+    match = line.match(/🔴\s*NOISE[:\s]+([^|\n]+)/i)
+    if (match) {
+      const name = cleanName(match[1])
+      if (isValidItem(name, existingNames)) {
+        extractedItems.push({ name, classification: 'NOISE', what: '', why: '', next_action: '' })
+        console.log('[AI] Extracted NOISE (simple):', name)
+        return
       }
     }
   })
@@ -154,10 +181,12 @@ const cleanName = (name) => {
   return name.trim().replace(/^\*+|\*+$/g, '').replace(/\*\*/g, '').trim()
 }
 
-const isValidItem = (name, existingItems) => {
+const isValidItem = (name, existingNames) => {
+  const cleanedName = name.toLowerCase()
   return (
     name.length >= 5 &&
-    !name.toLowerCase().startsWith('your top') &&
-    !existingItems.some(i => i.name.toLowerCase() === name.toLowerCase())
+    !cleanedName.startsWith('your top') &&
+    !cleanedName.startsWith('looking at') &&
+    !existingNames.includes(cleanedName)
   )
 }

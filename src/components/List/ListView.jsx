@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Circle, CheckCircle, Trash2, RefreshCw, ChevronDown, ChevronUp, Calendar } from 'lucide-react'
+import { useState, useRef } from 'react'
+import { Circle, CheckCircle, Trash2, RefreshCw, ChevronDown, ChevronUp, Calendar, Loader } from 'lucide-react'
 import { useItems } from '../../hooks/useItems'
 import { useAuth } from '../../hooks/useAuth'
 import { useMessages } from '../../hooks/useMessages'
@@ -7,10 +7,55 @@ import { analyzeWithAI } from '../../lib/ai'
 
 const ListView = ({ onScheduleItem }) => {
   const { profile } = useAuth()
-  const { items, signals, necessary, noise, completed, toggleComplete, deleteItem, clearCompleted, addItems } = useItems()
+  const { items, signals, necessary, noise, completed, toggleComplete, deleteItem, clearCompleted, addItems, reload } = useItems()
   const { addMessage } = useMessages()
   const [expandedId, setExpandedId] = useState(null)
   const [isReprioritizing, setIsReprioritizing] = useState(false)
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [pullDistance, setPullDistance] = useState(0)
+  const listRef = useRef(null)
+  const touchStartY = useRef(0)
+  const isPulling = useRef(false)
+
+  const PULL_THRESHOLD = 80
+
+  const handleTouchStart = (e) => {
+    if (listRef.current?.scrollTop === 0) {
+      touchStartY.current = e.touches[0].clientY
+      isPulling.current = true
+    }
+  }
+
+  const handleTouchMove = (e) => {
+    if (!isPulling.current || isRefreshing) return
+    
+    const currentY = e.touches[0].clientY
+    const diff = currentY - touchStartY.current
+    
+    if (diff > 0 && listRef.current?.scrollTop === 0) {
+      e.preventDefault()
+      setPullDistance(Math.min(diff * 0.5, PULL_THRESHOLD + 20))
+    }
+  }
+
+  const handleTouchEnd = async () => {
+    if (pullDistance >= PULL_THRESHOLD && !isRefreshing) {
+      setIsRefreshing(true)
+      setPullDistance(50)
+      
+      try {
+        await reload()
+        console.log('[List] Refreshed')
+      } catch (err) {
+        console.error('[List] Refresh error:', err)
+      }
+      
+      setIsRefreshing(false)
+    }
+    
+    setPullDistance(0)
+    isPulling.current = false
+  }
 
   const handleReprioritize = async () => {
     if (isReprioritizing) return
@@ -146,18 +191,39 @@ const ListView = ({ onScheduleItem }) => {
   }
 
   return (
-    <div className="h-full overflow-y-auto p-4">
-      {/* Reprioritize Button */}
-      {items.filter(i => !i.completed).length > 0 && (
-        <button
-          onClick={handleReprioritize}
-          disabled={isReprioritizing}
-          className="w-full mb-4 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-xl flex items-center justify-center gap-2 font-medium"
-        >
-          <RefreshCw size={18} className={isReprioritizing ? 'animate-spin' : ''} />
-          What's my top signal now?
-        </button>
-      )}
+    <div 
+      ref={listRef}
+      className="h-full overflow-y-auto overscroll-none"
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+    >
+      {/* Pull to refresh indicator */}
+      <div 
+        className="flex justify-center items-center transition-all duration-200 overflow-hidden"
+        style={{ height: pullDistance }}
+      >
+        {isRefreshing ? (
+          <Loader className="animate-spin text-blue-400" size={24} />
+        ) : pullDistance >= PULL_THRESHOLD ? (
+          <span className="text-sm text-blue-400">Release to refresh</span>
+        ) : pullDistance > 20 ? (
+          <span className="text-sm text-slate-500">Pull to refresh</span>
+        ) : null}
+      </div>
+
+      <div className="p-4">
+        {/* Reprioritize Button */}
+        {items.filter(i => !i.completed).length > 0 && (
+          <button
+            onClick={handleReprioritize}
+            disabled={isReprioritizing}
+            className="w-full mb-4 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-xl flex items-center justify-center gap-2 font-medium"
+          >
+            <RefreshCw size={18} className={isReprioritizing ? 'animate-spin' : ''} />
+            What's my top signal now?
+          </button>
+        )}
 
       {/* Signals */}
       {signals.length > 0 && (
@@ -236,6 +302,7 @@ const ListView = ({ onScheduleItem }) => {
           <p className="text-sm mt-2">Go to Chat and dump what's on your mind</p>
         </div>
       )}
+      </div>
     </div>
   )
 }

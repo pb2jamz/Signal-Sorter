@@ -59,6 +59,14 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     let mounted = true
     
+    // CRITICAL: Force loading to false after 4 seconds no matter what
+    const forceTimeout = setTimeout(() => {
+      if (mounted && loading) {
+        console.warn('[Auth] Force timeout - setting loading to false')
+        setLoading(false)
+      }
+    }, 4000)
+    
     const initAuth = async () => {
       console.log('[Auth] Initializing...')
       
@@ -93,7 +101,10 @@ export const AuthProvider = ({ children }) => {
         setError(err.message)
       }
       
-      if (mounted) setLoading(false)
+      if (mounted) {
+        console.log('[Auth] Setting loading to false')
+        setLoading(false)
+      }
     }
 
     initAuth()
@@ -114,11 +125,13 @@ export const AuthProvider = ({ children }) => {
         } else if (mounted) {
           setNeedsOnboarding(true)
         }
+        setLoading(false)
         
       } else if (event === 'SIGNED_OUT') {
         setUser(null)
         setProfile(null)
         setNeedsOnboarding(false)
+        setLoading(false)
         
       } else if (event === 'TOKEN_REFRESHED') {
         console.log('[Auth] Token refreshed')
@@ -127,6 +140,7 @@ export const AuthProvider = ({ children }) => {
 
     return () => {
       mounted = false
+      clearTimeout(forceTimeout)
       subscription.unsubscribe()
     }
   }, [])

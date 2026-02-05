@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { AuthProvider, useAuth } from './hooks/useAuth'
 import Login from './components/Auth/Login'
 import OnboardingFlow from './components/Onboarding/OnboardingFlow'
@@ -11,13 +11,25 @@ import BottomNav from './components/common/BottomNav'
 import { useItems } from './hooks/useItems'
 
 const MainApp = () => {
-  const { user, loading, needsOnboarding } = useAuth()
+  const { user, loading, needsOnboarding, error } = useAuth()
   const { signals, syncing } = useItems()
   const [activeView, setActiveView] = useState('chat')
   const [itemToSchedule, setItemToSchedule] = useState(null)
+  const [loadingTimeout, setLoadingTimeout] = useState(false)
 
-  // Show loading state
-  if (loading) {
+  // Force timeout after 5 seconds
+  useEffect(() => {
+    if (loading) {
+      const timer = setTimeout(() => {
+        console.log('[App] Loading timeout reached')
+        setLoadingTimeout(true)
+      }, 5000)
+      return () => clearTimeout(timer)
+    }
+  }, [loading])
+
+  // Show loading state (with timeout fallback)
+  if (loading && !loadingTimeout) {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center">
         <div className="text-center">
@@ -28,6 +40,12 @@ const MainApp = () => {
         </div>
       </div>
     )
+  }
+
+  // If loading timed out or there's an error, show login
+  if (loadingTimeout && !user) {
+    console.log('[App] Loading timed out, showing login')
+    return <Login />
   }
 
   // Show login if not authenticated

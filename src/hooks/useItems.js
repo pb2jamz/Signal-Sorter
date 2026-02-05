@@ -61,15 +61,24 @@ export const useItems = () => {
       return
     }
 
-    console.log('[Items] Adding', newItems.length, 'items')
+    console.log('[Items] Adding', newItems.length, 'items:')
+    newItems.forEach(item => {
+      console.log(`  - ${item.name} | classification: ${item.classification}`)
+    })
 
     const itemsToInsert = newItems.map(item => ({
-      ...item,
+      name: item.name,
+      classification: item.classification,
+      what: item.what || null,
+      why: item.why || null,
+      next_action: item.next_action || null,
       user_id: user.id,
       status: 'inbox',
       completed: false,
       created_at: new Date().toISOString()
     }))
+    
+    console.log('[Items] Prepared for insert:', JSON.stringify(itemsToInsert, null, 2))
 
     // Optimistic update with temp IDs
     const tempItems = itemsToInsert.map((item, i) => ({
