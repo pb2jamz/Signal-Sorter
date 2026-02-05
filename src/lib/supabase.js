@@ -3,40 +3,15 @@ import { createClient } from '@supabase/supabase-js'
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || ''
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || ''
 
+// Log config status (not the actual keys)
+console.log('[Supabase] URL configured:', !!supabaseUrl)
+console.log('[Supabase] Key configured:', !!supabaseAnonKey)
+
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: true
+    detectSessionInUrl: true,
+    storage: window.localStorage
   }
 })
-
-// Helper to get current user
-export const getCurrentUser = async () => {
-  const { data: { user } } = await supabase.auth.getUser()
-  return user
-}
-
-// Helper to get user profile
-export const getUserProfile = async (userId) => {
-  const { data, error } = await supabase
-    .from('users')
-    .select('*')
-    .eq('id', userId)
-    .single()
-  
-  if (error) return null
-  return data
-}
-
-// Helper to check if user has completed onboarding
-export const hasCompletedOnboarding = async (userId) => {
-  const { data, error } = await supabase
-    .from('users')
-    .select('onboarding_completed')
-    .eq('id', userId)
-    .single()
-  
-  if (error) return false
-  return data?.onboarding_completed || false
-}
