@@ -8,7 +8,7 @@ import { analyzeWithAI } from '../../lib/ai'
 const ChatView = () => {
   const { profile } = useAuth()
   const { messages, addMessage, clearMessages } = useMessages()
-  const { items, addItems } = useItems()
+  const { items, addItems, updateItems } = useItems()
   const [input, setInput] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
   const [error, setError] = useState('')
@@ -40,9 +40,14 @@ const ChatView = () => {
       // Add AI response to chat
       await addMessage('assistant', result.response)
       
-      // Add extracted items
+      // Add new items
       if (result.items && result.items.length > 0) {
         await addItems(result.items)
+      }
+      
+      // Update existing items (reclassifications)
+      if (result.updates && result.updates.length > 0) {
+        await updateItems(result.updates)
       }
     } catch (err) {
       console.error('Chat error:', err)

@@ -7,7 +7,7 @@ import { analyzeWithAI } from '../../lib/ai'
 
 const ListView = ({ onScheduleItem }) => {
   const { profile } = useAuth()
-  const { items, signals, necessary, noise, completed, toggleComplete, deleteItem, clearCompleted, addItems, reload } = useItems()
+  const { items, signals, necessary, noise, completed, toggleComplete, deleteItem, clearCompleted, addItems, updateItems, reload } = useItems()
   const { addMessage } = useMessages()
   const [expandedId, setExpandedId] = useState(null)
   const [isReprioritizing, setIsReprioritizing] = useState(false)
@@ -68,8 +68,14 @@ const ListView = ({ onScheduleItem }) => {
       const result = await analyzeWithAI(userMessage, profile, items, true)
       await addMessage('assistant', result.response)
 
+      // Add any new items
       if (result.items?.length > 0) {
         await addItems(result.items)
+      }
+      
+      // Apply any updates to existing items
+      if (result.updates?.length > 0) {
+        await updateItems(result.updates)
       }
     } catch (err) {
       console.error('Reprioritize error:', err)

@@ -48,9 +48,47 @@ export const useMessages = () => {
     }
   }, [user, profile])
 
+  // Load messages and set up real-time subscription
   useEffect(() => {
     loadMessages()
-  }, [loadMessages])
+
+    // Set up real-time subscription for cross-device sync
+    if (!user) return
+
+    console.log('[Messages] Setting up real-time subscription')
+    
+    const channel = supabase
+      .channel('messages-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
+          filter: `user_id=eq.${user.id}`
+        },
+        (payload) => {
+          console.log('[Messages] Real-time insert')
+          setMessages(prev => {
+            // Avoid duplicates
+            if (prev.some(m => m.id === payload.new.id)) return prev
+            return [...prev, {
+              id: payload.new.id,
+              role: payload.new.role,
+              content: payload.new.content
+            }]
+          })
+        }
+      )
+      .subscribe((status) => {
+        console.log('[Messages] Subscription status:', status)
+      })
+
+    return () => {
+      console.log('[Messages] Cleaning up subscription')
+      supabase.removeChannel(channel)
+    }
+  }, [user, loadMessages])
 
   // Add a message
   const addMessage = async (role, content) => {

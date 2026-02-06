@@ -90,7 +90,16 @@ const SettingsView = () => {
 
   const handleSignOut = async () => {
     if (window.confirm('Sign out?')) {
-      await signOut()
+      try {
+        console.log('[Settings] Signing out...')
+        await signOut()
+        console.log('[Settings] Signed out, reloading...')
+        // Force reload to clear all state
+        window.location.reload()
+      } catch (err) {
+        console.error('[Settings] Sign out error:', err)
+        setMessage({ type: 'error', text: 'Failed to sign out' })
+      }
     }
   }
 

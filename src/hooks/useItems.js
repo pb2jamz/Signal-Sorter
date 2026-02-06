@@ -45,9 +45,52 @@ export const useItems = () => {
     }
   }, [user])
 
+  // Load items and set up real-time subscription
   useEffect(() => {
     loadItems()
-  }, [loadItems])
+
+    // Set up real-time subscription for cross-device sync
+    if (!user) return
+
+    console.log('[Items] Setting up real-time subscription')
+    
+    const channel = supabase
+      .channel('items-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'items',
+          filter: `user_id=eq.${user.id}`
+        },
+        (payload) => {
+          console.log('[Items] Real-time update:', payload.eventType)
+          
+          if (payload.eventType === 'INSERT') {
+            setItems(prev => {
+              // Avoid duplicates
+              if (prev.some(i => i.id === payload.new.id)) return prev
+              return [payload.new, ...prev]
+            })
+          } else if (payload.eventType === 'UPDATE') {
+            setItems(prev => prev.map(item => 
+              item.id === payload.new.id ? payload.new : item
+            ))
+          } else if (payload.eventType === 'DELETE') {
+            setItems(prev => prev.filter(item => item.id !== payload.old.id))
+          }
+        }
+      )
+      .subscribe((status) => {
+        console.log('[Items] Subscription status:', status)
+      })
+
+    return () => {
+      console.log('[Items] Cleaning up subscription')
+      supabase.removeChannel(channel)
+    }
+  }, [user, loadItems])
 
   // Add new items (batch)
   const addItems = async (newItems) => {
@@ -113,6 +156,49 @@ export const useItems = () => {
       setError(err.message || 'Failed to add items')
       // Rollback optimistic update
       setItems(prev => prev.filter(i => !String(i.id).startsWith('temp-')))
+      throw err
+    } finally {
+      setSyncing(false)
+    }
+  }
+
+  // Update multiple items at once (for reclassification)
+  const updateItems = async (updates) => {
+    if (!user || !updates?.length) return
+
+    console.log('[Items] Updating', updates.length, 'items')
+
+    // Optimistic update
+    const previousItems = [...items]
+    setItems(prev => prev.map(item => {
+      const update = updates.find(u => u.id === item.id)
+      return update ? { ...item, ...update } : item
+    }))
+
+    try {
+      setSyncing(true)
+      
+      // Update each item
+      for (const update of updates) {
+        const { id, ...changes } = update
+        const { error } = await supabase
+          .from('items')
+          .update({
+            ...changes,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', id)
+          .eq('user_id', user.id)
+
+        if (error) {
+          console.error('[Items] Update error for', id, error)
+        } else {
+          console.log('[Items] Updated', id)
+        }
+      }
+    } catch (err) {
+      console.error('[Items] Batch update failed:', err)
+      setItems(previousItems)
       throw err
     } finally {
       setSyncing(false)
@@ -248,6 +334,7 @@ export const useItems = () => {
     syncing,
     error,
     addItems,
+    updateItems,
     updateItem,
     toggleComplete,
     deleteItem,
