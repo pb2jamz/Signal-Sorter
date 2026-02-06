@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { User, Download, Upload, MessageSquare, LogOut, ChevronRight, Loader, CheckCircle, AlertCircle } from 'lucide-react'
+import { User, Download, Upload, MessageSquare, LogOut, ChevronRight, Loader, CheckCircle, AlertCircle, Trash2 } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { useItems } from '../../hooks/useItems'
 import { useMessages } from '../../hooks/useMessages'
@@ -8,7 +8,7 @@ import { exportJSON, exportCSV, importJSON } from '../../lib/export'
 
 const SettingsView = () => {
   const { user, profile, signOut, updateProfile } = useAuth()
-  const { items } = useItems()
+  const { items, cleanupDuplicates } = useItems()
   const { messages } = useMessages()
   const { submitFeedback } = useFeedback()
   
@@ -103,6 +103,24 @@ const SettingsView = () => {
     }
   }
 
+  const handleCleanupDuplicates = async () => {
+    if (window.confirm('This will remove duplicate items and clean up names. Continue?')) {
+      try {
+        setLoading(true)
+        const result = await cleanupDuplicates()
+        setMessage({ 
+          type: 'success', 
+          text: `Cleanup complete! Removed ${result.removed} duplicates, cleaned ${result.renamed || 0} names.` 
+        })
+      } catch (err) {
+        console.error('[Settings] Cleanup error:', err)
+        setMessage({ type: 'error', text: 'Cleanup failed: ' + err.message })
+      } finally {
+        setLoading(false)
+      }
+    }
+  }
+
   const MenuItem = ({ icon: Icon, label, onClick, danger = false }) => (
     <button
       onClick={onClick}
@@ -188,6 +206,11 @@ const SettingsView = () => {
             icon={MessageSquare} 
             label="Report a Problem" 
             onClick={() => setActiveSection('feedback')} 
+          />
+          <MenuItem 
+            icon={Trash2} 
+            label="Clean Up Duplicates" 
+            onClick={handleCleanupDuplicates} 
           />
           <div className="pt-4 border-t border-slate-700 mt-4">
             <MenuItem 

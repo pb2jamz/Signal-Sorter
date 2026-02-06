@@ -318,6 +318,97 @@ export const useItems = () => {
     }
   }
 
+  // Clean up duplicate items
+  const cleanupDuplicates = async () => {
+    if (!user) return { removed: 0 }
+
+    console.log('[Items] Starting duplicate cleanup...')
+    
+    try {
+      setSyncing(true)
+      
+      // Group items by normalized name
+      const groups = new Map()
+      items.forEach(item => {
+        const normalized = item.name
+          .toLowerCase()
+          .replace(/^(signal|necessary|noise)[:\s]*/i, '')
+          .replace(/[^\w\s]/g, '')
+          .trim()
+        
+        if (!groups.has(normalized)) {
+          groups.set(normalized, [])
+        }
+        groups.get(normalized).push(item)
+      })
+
+      // Find duplicates to delete
+      const toDelete = []
+      const toUpdate = []
+      
+      groups.forEach((group, normalizedName) => {
+        if (group.length > 1) {
+          // Sort by created_at, keep the oldest one
+          group.sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+          
+          const keeper = group[0]
+          const duplicates = group.slice(1)
+          
+          console.log(`[Items] "${normalizedName}": keeping 1, removing ${duplicates.length}`)
+          
+          // Check if keeper name needs cleaning
+          const cleanName = keeper.name.replace(/^(signal|necessary|noise)[:\s]*/i, '').trim()
+          if (cleanName !== keeper.name) {
+            toUpdate.push({ id: keeper.id, name: cleanName })
+          }
+          
+          duplicates.forEach(dup => toDelete.push(dup.id))
+        } else if (group.length === 1) {
+          // Check if single item name needs cleaning
+          const item = group[0]
+          const cleanName = item.name.replace(/^(signal|necessary|noise)[:\s]*/i, '').trim()
+          if (cleanName !== item.name) {
+            toUpdate.push({ id: item.id, name: cleanName })
+          }
+        }
+      })
+
+      // Delete duplicates
+      if (toDelete.length > 0) {
+        console.log('[Items] Deleting', toDelete.length, 'duplicates')
+        const { error: deleteError } = await supabase
+          .from('items')
+          .delete()
+          .in('id', toDelete)
+        
+        if (deleteError) {
+          console.error('[Items] Delete error:', deleteError)
+        }
+      }
+
+      // Update names that need cleaning
+      for (const update of toUpdate) {
+        console.log('[Items] Cleaning name:', update.id)
+        await supabase
+          .from('items')
+          .update({ name: update.name })
+          .eq('id', update.id)
+      }
+
+      // Reload items
+      await loadItems()
+      
+      console.log('[Items] Cleanup complete. Removed:', toDelete.length, 'Renamed:', toUpdate.length)
+      return { removed: toDelete.length, renamed: toUpdate.length }
+      
+    } catch (err) {
+      console.error('[Items] Cleanup failed:', err)
+      throw err
+    } finally {
+      setSyncing(false)
+    }
+  }
+
   // Filtered views
   const signals = items.filter(i => i.classification === 'SIGNAL' && !i.completed)
   const necessary = items.filter(i => i.classification === 'NECESSARY' && !i.completed)
@@ -339,6 +430,7 @@ export const useItems = () => {
     toggleComplete,
     deleteItem,
     clearCompleted,
+    cleanupDuplicates,
     reload: loadItems
   }
 }
